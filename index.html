@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena Zeus - Godlike Edition</title>
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@900&family=Luckiest+Guy&display=swap');
+        :root { --gold: #ffd700; --cyan: #00f2ff; }
+        body { margin:0; background:#000; color:#fff; font-family:'Luckiest Guy',cursive; overflow:hidden; }
+
+        /* --- ANIMASI AWAN MENDUNG & PETIR --- */
+        .storm-bg {
+            position: fixed; top:0; width:100%; height:100%;
+            background: linear-gradient(to bottom, #020205, #101020);
+            z-index: -2;
+        }
+        .clouds {
+            position: fixed; top:0; width:200%; height:100%;
+            background: url('https://www.transparenttextures.com/patterns/dark-matter.png');
+            opacity: 0.3; animation: moveClouds 60s linear infinite; z-index: -1;
+        }
+        @keyframes moveClouds { from {transform:translateX(0)} to {transform:translateX(-50%)} }
+
+        .lightning {
+            position: fixed; top:0; left:0; width:100%; height:100%;
+            background: #fff; opacity:0; z-index: 10; pointer-events:none;
+        }
+        .strike { animation: lightningStrike 0.4s ease-out; }
+        @keyframes lightningStrike { 
+            0% {opacity:0} 10% {opacity:0.7; background:#fff} 20% {opacity:0} 
+            25% {opacity:1; background:var(--cyan)} 100% {opacity:0} 
+        }
+
+        .container { display:flex; justify-content:center; align-items:center; height:100vh; }
+        .card { 
+            background: rgba(0,0,0,0.85); border: 4px solid var(--gold); padding: 30px; 
+            border-radius: 30px; text-align:center; width: 380px; box-shadow: 0 0 50px rgba(255,215,0,0.2);
+            backdrop-filter: blur(10px); position: relative;
+        }
+
+        /* --- CLUE BOX (BESAR & KEREN) --- */
+        .box-row { display:flex; justify-content:center; gap:10px; margin:20px 0; }
+        .letter-box { 
+            width:50px; height:60px; border:3px solid var(--cyan); border-radius:10px;
+            font-size:2rem; display:flex; align-items:center; justify-content:center;
+            background: rgba(0,242,255,0.05); box-shadow: 0 0 15px var(--cyan);
+        }
+
+        #timer { font-size: 3rem; color: #ff3333; text-shadow: 0 0 20px #ff0000; }
+        input { width:85%; padding:15px; margin:15px 0; border-radius:15px; border:2px solid var(--gold); background:#000; color:#fff; text-align:center; font-size:1.3rem; }
+        
+        .btn { 
+            width:100%; padding:18px; border:none; border-radius:50px; cursor:pointer; 
+            font-family:'Luckiest Guy'; font-size:1.4rem; color:#000; transition:0.3s;
+            background: linear-gradient(var(--gold), #b8860b);
+        }
+        .btn-claim { background: linear-gradient(#00ff00, #008800); color: #fff; text-decoration: none; display: block; margin-top: 10px; }
+        .btn-retry { background: linear-gradient(#ff3333, #880000); color: #fff; text-decoration: none; display: block; margin-top: 10px; }
+
+        /* --- OVERLAY MENANG --- */
+        #win-overlay { position:absolute; top:0; left:0; width:100%; height:100%; background:#000; border-radius:25px; display:none; flex-direction:column; justify-content:center; align-items:center; z-index:20; }
+    </style>
+</head>
+<body>
+
+    <div class="storm-bg"></div>
+    <div class="clouds"></div>
+    <div class="lightning" id="lightning"></div>
+
+    <div class="container">
+        <div id="scr-login" class="card">
+            <h1 style="color:var(--gold); font-family:'Cinzel'; margin:0">ARENA ZEUS</h1>
+            <p style="color:var(--cyan)">BUKTIKAN KEKUATANMU!</p>
+            <input type="text" id="name" placeholder="NAMA">
+            <input type="text" id="ticket" placeholder="KODE TIKET">
+            <button class="btn" onclick="startArena()">MULAI UJIAN</button>
+        </div>
+
+        <div id="scr-game" class="card" style="display:none">
+            <div id="win-overlay">
+                <lottie-player id="win-anim" src="" background="transparent" speed="1" style="width: 200px; height: 200px;" loop autoplay></lottie-player>
+                <h2 id="final-msg" style="color:var(--gold)">MENANG!</h2>
+                <a id="btn-action" href="#" class="btn" style="text-align:center; width:80%">ACTION</a>
+            </div>
+
+            <div id="timer">60</div>
+            <div id="prog" style="color:var(--cyan)">LEVEL 1/3</div>
+            <div id="quest" style="margin:15px 0; font-family:'Cinzel'"></div>
+            <div class="box-row" id="clue-box"></div>
+            <input type="text" id="ans" placeholder="JAWABAN..." autocomplete="off">
+            <button class="btn" onclick="submitAns()">KIRIM!</button>
+            <div id="status-msg" style="margin-top:10px; height:20px"></div>
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx690qhxTVx5yMXdcqGNpXWPnrolAgHnbkKdcWZEvZN1mmNGYpWsCCPWGp7UVu2yLNNTQ/exec"; // <--- GANTI DISINI
+        const HADIAH_URL = "https://wa.me/62812345678"; // <--- LINK HADIAH
+
+        let gData = { soal:[], idx:0, time:60, timer:null, user:{n:"", t:"", ip:""}, logs:[] };
+
+        fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => gData.user.ip = d.ip);
+
+        function zap() {
+            const l = document.getElementById('lightning');
+            l.classList.remove('strike'); void l.offsetWidth; l.classList.add('strike');
+        }
+
+        async function startArena() {
+            const n = document.getElementById('name').value;
+            const t = document.getElementById('ticket').value;
+            if(!n || !t) return alert("Isi data!");
+
+            document.getElementById('scr-login').querySelector('button').innerText = "MEMANGGIL PETIR...";
+            try {
+                const [authR, soalR] = await Promise.all([
+                    fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: "validateAndLock", ticket: t, nama: n }) }),
+                    fetch(SCRIPT_URL + "?action=getSoal")
+                ]);
+                const auth = await authR.json();
+                if(!auth.valid) { alert("Tiket Salah/Terpakai!"); location.reload(); return; }
+
+                gData.soal = await soalR.json();
+                gData.user.n = n; gData.user.t = t;
+                zap();
+                document.getElementById('scr-login').style.display = 'none';
+                document.getElementById('scr-game').style.display = 'block';
+                render();
+            } catch(e) { alert("Koneksi Error!"); }
+        }
+
+        function render() {
+            if(gData.idx >= 3) return endLevel("MENANG");
+            const s = gData.soal[gData.idx];
+            document.getElementById('quest').innerText = s.pertanyaan;
+            document.getElementById('prog').innerText = `LEVEL ${gData.idx+1}/3`;
+            const cb = document.getElementById('clue-box');
+            cb.innerHTML = "";
+            s.clue.split(' ').forEach(l => cb.innerHTML += `<div class="letter-box">${l}</div>`);
+            
+            gData.time = 60;
+            clearInterval(gData.timer);
+            gData.timer = setInterval(() => {
+                gData.time--;
+                document.getElementById('timer').innerText = gData.time;
+                if(gData.time <= 0) { clearInterval(gData.timer); endLevel("KALAH"); }
+            }, 1000);
+        }
+
+        function submitAns() {
+            const u = document.getElementById('ans').value.toUpperCase();
+            const s = gData.soal[gData.idx];
+            const msg = document.getElementById('status-msg');
+
+            // Simpan log sementara di memori browser
+            gData.logs.push({ q: s.pertanyaan, a: u });
+
+            if(u === s.jawaban.toUpperCase()) {
+                zap();
+                msg.innerHTML = "<span style='color:#0f0'>BENAR!</span>";
+                setTimeout(() => { 
+                    gData.idx++; 
+                    document.getElementById('ans').value = "";
+                    msg.innerText = "";
+                    render(); 
+                }, 800);
+            } else {
+                msg.innerHTML = "<span style='color:#f00'>SALAH!</span>";
+                setTimeout(() => msg.innerText = "", 1500);
+            }
+        }
+
+        async function endLevel(hasil) {
+            clearInterval(gData.timer);
+            const ov = document.getElementById('win-overlay');
+            const anim = document.getElementById('win-anim');
+            const msg = document.getElementById('final-msg');
+            const btn = document.getElementById('btn-action');
+
+            ov.style.display = 'flex';
+            
+            // Kirim Log Satu Baris ke Sheet
+            fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({
+                action: "finishLog", nama: gData.user.n, ticket: gData.user.t, ip: gData.user.ip,
+                logs: gData.logs, hasil: hasil
+            })});
+
+            if(hasil === "MENANG") {
+                zap();
+                anim.src = "https://assets10.lottiefiles.com/packages/lf20_touohxv0.json"; // Animasi Koin/Kado
+                msg.innerText = "SELAMAT! KAMU MENANG!";
+                btn.innerText = "KLAIM HADIAH";
+                btn.href = HADIAH_URL;
+                btn.className = "btn btn-claim";
+            } else {
+                msg.innerText = "WAKTU HABIS! KAMU KALAH!";
+                btn.innerText = "KEMBALI";
+                btn.onclick = () => location.reload();
+                btn.className = "btn btn-retry";
+            }
+        }
+
+        // Efek petir acak di background
+        setInterval(() => { if(Math.random() > 0.85) zap(); }, 4000);
+    </script>
+</body>
+</html>
